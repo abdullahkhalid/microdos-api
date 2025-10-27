@@ -1,0 +1,631 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  handle        String?   @unique // @username for mentions
+  image         String?
+  password      String?
+  bio           String?   @db.Text
+  location      String?
+  website       String?
+
+  // Community roles
+  globalRole String @default("user") // "user", "moderator", "admin"
+
+  // Privacy settings
+  isPublic      Boolean @default(true)
+  allowMentions Boolean @default(true)
+
+  // Notification preferences
+  notificationSettings Json? // User's notification preferences
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts         Account[]
+  sessions         Session[]
+  microdoseProfile MicrodoseProfile?
+  activities       UserActivity[]
+  protocols        Protocol[]
+  notifications    Notification[]
+  reviews          Review[]
+  suggestions      Suggestion[]
+  reviewLikes      ReviewLike[]
+  suggestionLikes  SuggestionLike[]
+
+  // Community relations
+  groupMemberships GroupMember[]
+  ownedGroups      Group[]        @relation("GroupOwner")
+  posts            Post[]
+  comments         Comment[]
+  reactions        Reaction[]
+  reports          Report[]
+  moderatedReports Report[]       @relation("ReportModerator")
+  auditLogs        AuditLog[]
+  mentions         Mention[]
+  subscriptions    Subscription[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model MicrodoseProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Basic parameters
+  gender     String // "male", "female", "other"
+  weight     Float // in kg
+  substance  String // "psilocybin", "lsd", "amanita", "ketamine"
+  intakeForm String // "dried_mushrooms", "fresh_mushrooms", "truffles", "pure_extract", "blotter", "liquid", "capsules"
+
+  // Sensitivity and goals
+  sensitivity Float // 0.5 (very sensitive) to 1.5 (less sensitive), default 1.0
+  goal        String // "sub_perceptual", "standard", "upper_microdose"
+
+  // Calculated results
+  calculatedDose Float // in mg or µg depending on substance
+  doseUnit       String // "mg" or "µg"
+
+  // Additional info
+  experience        String? // "beginner", "intermediate", "experienced"
+  currentMedication String? // any current medications that might affect sensitivity
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("microdose_profiles")
+}
+
+model TemporaryCalculation {
+  id        String @id @default(cuid())
+  sessionId String @unique // Browser session ID
+
+  // Basic parameters
+  gender     String // "male", "female", "other"
+  weight     Float // in kg
+  substance  String // "psilocybin", "lsd", "amanita", "ketamine"
+  intakeForm String // "dried_mushrooms", "fresh_mushrooms", "truffles", "pure_extract", "blotter", "liquid", "capsules"
+
+  // Sensitivity and goals
+  sensitivity Float // 0.5 (very sensitive) to 1.5 (less sensitive), default 1.0
+  goal        String // "sub_perceptual", "standard", "upper_microdose"
+
+  // Calculated results
+  calculatedDose Float // in mg or µg depending on substance
+  doseUnit       String // "mg" or "µg"
+
+  // Additional info
+  experience        String? // "beginner", "intermediate", "experienced"
+  currentMedication String? // any current medications that might affect sensitivity
+
+  // Registration data (filled after calculation)
+  email    String? // User's email
+  name     String? // User's name
+  password String? // Hashed password
+
+  // Status
+  isRegistered Boolean @default(false) // Whether user has completed registration
+  userId       String? // Link to user after registration
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("temporary_calculations")
+}
+
+model UserActivity {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        String // "account_created", "microdose_calculated", "profile_updated", etc.
+  title       String // "Account created", "Personalized microdose calculated", etc.
+  description String // "Welcome to Microdos.in!", "Your microdose profile has been created", etc.
+  metadata    Json? // Additional data like substance, dose, etc.
+
+  createdAt DateTime @default(now())
+
+  @@map("user_activities")
+}
+
+model Protocol {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Protocol details
+  type   String // "fadiman", "stamets", "custom"
+  name   String // User-defined name for the protocol
+  status String // "active", "paused", "completed"
+
+  // Cycle information
+  startDate   DateTime
+  endDate     DateTime
+  cycleLength Int // Duration in weeks (2-6)
+
+  // Protocol-specific settings
+  settings Json // Protocol-specific configuration
+
+  // Notification preferences
+  notificationSettings Json // User's notification preferences
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  events ProtocolEvent[]
+
+  @@map("protocols")
+}
+
+model ProtocolEvent {
+  id         String   @id @default(cuid())
+  protocolId String
+  protocol   Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+
+  // Event details
+  date   DateTime
+  type   String // "dose", "pause", "break"
+  status String // "scheduled", "completed", "missed", "skipped"
+
+  // Dosage information (linked to microdose profile)
+  substance String?
+  dose      Float?
+  doseUnit  String?
+
+  // Event-specific data
+  metadata Json? // Additional event data
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  journalEntries JournalEntry[]
+
+  @@map("protocol_events")
+}
+
+model JournalEntry {
+  id      String        @id @default(cuid())
+  eventId String
+  event   ProtocolEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // Entry type
+  type String // "intention", "reflection", "assessment"
+
+  // Content
+  content Json // Structured journal content
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("journal_entries")
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Notification details
+  type    String // "reminder", "reflection", "assessment"
+  title   String
+  message String
+
+  // Scheduling
+  scheduledFor DateTime
+  sentAt       DateTime?
+
+  // Status
+  status String // "scheduled", "sent", "delivered", "failed"
+
+  // Metadata
+  metadata Json? // Additional notification data
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notifications")
+}
+
+model Review {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Review content
+  rating  Int // 1-5 stars
+  comment String @db.Text
+
+  // Moderation
+  isApproved Boolean @default(false)
+  isVisible  Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  likes ReviewLike[]
+
+  @@map("reviews")
+}
+
+model Suggestion {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Suggestion content
+  title       String
+  description String @db.Text
+  category    String // "UI/UX", "Features", "Microdoses", "Werbung"
+
+  // Moderation
+  isApproved Boolean @default(false)
+  isVisible  Boolean @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  likes SuggestionLike[]
+
+  @@map("suggestions")
+}
+
+model ReviewLike {
+  id       String @id @default(cuid())
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, userId])
+  @@map("review_likes")
+}
+
+model SuggestionLike {
+  id           String     @id @default(cuid())
+  suggestionId String
+  suggestion   Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([suggestionId, userId])
+  @@map("suggestion_likes")
+}
+
+// ===== COMMUNITY MODELS =====
+
+model Group {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String? @db.Text
+  rules       String? @db.Text
+
+  // Visibility and settings
+  visibility String  @default("public") // "public", "private", "restricted"
+  isActive   Boolean @default(true)
+
+  // Group settings
+  settings Json // Post approval, reactions, etc.
+
+  // Ownership
+  ownerId String
+  owner   User   @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Media
+  avatarUrl String?
+  bannerUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  members GroupMember[]
+  posts   Post[]
+  reports Report[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id      String @id @default(cuid())
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role   String @default("member") // "member", "moderator", "owner"
+  status String @default("active") // "active", "muted", "banned", "pending"
+
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+model Post {
+  id       String @id @default(cuid())
+  groupId  String
+  group    Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Content
+  title       String?
+  content     String  @db.Text // Rich text content
+  contentHtml String? @db.Text // Sanitized HTML
+
+  // Media and links
+  media     Json? // Array of media objects
+  ogPreview Json? // OpenGraph preview data
+
+  // Status and moderation
+  status   String  @default("published") // "draft", "published", "scheduled", "hidden", "removed"
+  isPinned Boolean @default(false)
+  isLocked Boolean @default(false)
+
+  // Engagement
+  viewCount     Int @default(0)
+  reactionCount Int @default(0)
+  commentCount  Int @default(0)
+
+  // Scheduling
+  publishedAt  DateTime?
+  scheduledFor DateTime?
+
+  // Edit history
+  editHistory Json? // Array of edit records
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  comments Comment[]
+  mentions Mention[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id       String @id @default(cuid())
+  postId   String
+  post     Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Threading
+  parentId String? // For nested comments
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+
+  // Content
+  content     String  @db.Text
+  contentHtml String? @db.Text // Sanitized HTML
+
+  // Status
+  status String @default("published") // "published", "hidden", "removed"
+
+  // Engagement
+  reactionCount Int @default(0)
+
+  // Edit history
+  editHistory Json? // Array of edit records
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  mentions Mention[]
+
+  @@map("comments")
+}
+
+model Reaction {
+  id         String @id @default(cuid())
+  targetType String // "post" or "comment"
+  targetId   String // ID of the post or comment
+  userId     String
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type String @default("like") // "like", "love", "laugh", "angry", etc.
+
+  createdAt DateTime @default(now())
+
+  @@unique([targetType, targetId, userId])
+  @@map("reactions")
+}
+
+model Report {
+  id         String @id @default(cuid())
+  targetType String // "post", "comment", "user", "group"
+  targetId   String // ID of the reported content
+  reporterId String
+  reporter   User   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // Report details
+  reason      String // "spam", "harassment", "inappropriate", "illegal", etc.
+  description String? @db.Text
+  evidence    Json? // Screenshots, links, etc.
+
+  // Moderation
+  status      String  @default("pending") // "pending", "reviewed", "resolved", "dismissed"
+  moderatorId String?
+  moderator   User?   @relation("ReportModerator", fields: [moderatorId], references: [id])
+  action      String? // "hide", "remove", "warn", "mute", "ban"
+  notes       String? @db.Text
+
+  // Group context
+  groupId String?
+  group   Group?  @relation(fields: [groupId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("reports")
+}
+
+model AuditLog {
+  id      String @id @default(cuid())
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  action     String // "create", "update", "delete", "moderate", etc.
+  targetType String // "post", "comment", "user", "group", etc.
+  targetId   String // ID of the target
+
+  details  Json? // Additional action details
+  metadata Json? // Request metadata, IP, user agent, etc.
+
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model Mention {
+  id              String @id @default(cuid())
+  targetType      String // "post" or "comment"
+  targetId        String // ID of the post or comment
+  mentionedUserId String
+  mentionedUser   User   @relation(fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  // Context
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  // Status
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@map("mentions")
+}
+
+model Subscription {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  targetType String // "group", "user", "post"
+  targetId   String // ID of the subscribed content
+
+  // Notification preferences
+  inApp Boolean @default(true)
+  email Boolean @default(false)
+  push  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, targetType, targetId])
+  @@map("subscriptions")
+}
+
+model Media {
+  id           String @id @default(cuid())
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int // File size in bytes
+  width        Int?
+  height       Int?
+
+  // Storage
+  url          String // CDN URL
+  thumbnailUrl String? // Thumbnail URL
+
+  // Metadata
+  metadata Json? // EXIF data, etc.
+
+  // Ownership
+  uploadedBy String? // User ID who uploaded
+
+  createdAt DateTime @default(now())
+
+  @@map("media")
+}
+
+model LinkPreview {
+  id  String @id @default(cuid())
+  url String @unique
+
+  // Preview data
+  title       String?
+  description String?
+  image       String?
+  siteName    String?
+
+  // Status
+  isValid     Boolean  @default(true)
+  lastChecked DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("link_previews")
+}
