@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 3000
 app.use(helmet())
 app.use(
 	cors({
-		origin: [process.env.APP_BASE_URL || 'https://microdos-web.vercel.app', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5173', 'https://microdos.in', 'https://www.microdos.in'],
+		origin: [process.env.APP_BASE_URL || 'https://microdos-web-inky.vercel.app', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5173', 'https://microdos.in', 'https://www.microdos.in'],
 		credentials: true
 	})
 )
